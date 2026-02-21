@@ -1,0 +1,147 @@
+:root {
+    --brand-blue: #244a73; /* adjust if needed */
+    --brand-bg: #f4efe8;
+    --border: rgba(0, 0, 0, 0.08);
+
+    --header-h: 56px;
+    --sidebar-closed: 74px;
+    --sidebar-open: 260px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: var(--brand-bg);
+    font-family:
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        Segoe UI,
+        Roboto,
+        Arial;
+}
+
+/* Header */
+.appHeader {
+    height: var(--header-h);
+    background: var(--brand-blue); /* SAME BLUE */
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+}
+
+.brandLogo {
+    height: 34px;
+    width: auto;
+    display: block;
+}
+
+.avatarCircle {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.2);
+    font-weight: 700;
+}
+
+/* Layout */
+.body {
+    display: flex;
+    min-height: calc(100vh - var(--header-h));
+}
+
+/* Sidebar */
+.sidebar {
+    background: #ffffff; /* WHITE SIDEBAR */
+    border-right: 1px solid var(--border);
+    transition: width 180ms ease;
+    overflow: hidden;
+    padding: 12px 10px;
+}
+
+.sidebar.closed {
+    width: var(--sidebar-closed);
+}
+.sidebar.open {
+    width: var(--sidebar-open);
+}
+
+.sidebarTop {
+    height: 44px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.sidebarToggle {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: #f3f3f3;
+    cursor: pointer;
+}
+
+/* Nav */
+.sidebarNav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.navRow {
+    height: 44px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    text-decoration: none;
+    color: #244a73;
+    font-weight: 600;
+}
+
+.navRow:hover {
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+.navRow.active {
+    background: var(--brand-blue);
+    color: white;
+}
+
+.navIcon {
+    width: 26px;
+    text-align: center;
+}
+
+.sidebar.closed .navRow {
+    width: 54px;
+    justify-content: center;
+    padding: 0;
+}
+
+.sidebar.closed .navText {
+    display: none;
+}
+
+/* Content */
+.content {
+    flex: 1;
+    padding: 22px;
+    background: var(--brand-bg);
+}
