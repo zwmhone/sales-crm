@@ -1,12 +1,25 @@
+import React from "react";
 import { createRoot } from "react-dom/client";
-import AppShell from "./Components/Layout/AppShell";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-function Dashboard() {
-    return <h1 style={{ margin: 0 }}>Dashboard</h1>;
+import AppShell from "./Components/Layout/AppShell";
+import Dashboard from "./pages/Dashboard";
+import CsvImportPage from "./pages/CsvImportPage";
+
+function NotFound() {
+    return <h1 style={{ margin: 0 }}>404</h1>;
 }
 
 createRoot(document.getElementById("app")).render(
-    <AppShell>
-        <Dashboard />
-    </AppShell>,
+    <React.StrictMode>
+        <BrowserRouter>
+            <AppShell>
+                <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/csv-import" element={<CsvImportPage />} />
+                    <Route path="*" element={<NotFound />} />
+                </Routes>
+            </AppShell>
+        </BrowserRouter>
+    </React.StrictMode>,
 );

@@ -1,5 +1,4 @@
 import React, { useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
 
 function getCsrfToken() {
     const el = document.querySelector('meta[name="csrf-token"]');
@@ -188,7 +187,7 @@ function StatGrid({ stats }) {
     );
 }
 
-function CsvImportPage() {
+export default function CsvImportPage() {
     const inputRef = useRef(null);
 
     const [file, setFile] = useState(null);
@@ -271,12 +270,11 @@ function CsvImportPage() {
 
             const json = await new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
-                xhr.open("POST", "/csv-import", true);
+                xhr.open("POST", "/api/csv-import", true);
 
                 const csrf = getCsrfToken();
                 if (csrf) xhr.setRequestHeader("X-CSRF-TOKEN", csrf);
 
-                // Important: ask for JSON
                 xhr.setRequestHeader("Accept", "application/json");
 
                 xhr.upload.onprogress = (evt) => {
@@ -286,13 +284,11 @@ function CsvImportPage() {
                 };
 
                 xhr.onload = () => {
-                    // Parse JSON (Laravel returns JSON now)
                     try {
                         const data = JSON.parse(xhr.responseText || "{}");
                         if (xhr.status >= 200 && xhr.status < 300) {
                             resolve(data);
                         } else {
-                            // error JSON
                             reject({ status: xhr.status, data });
                         }
                     } catch (e) {
@@ -323,7 +319,6 @@ function CsvImportPage() {
                 setErrorMsg(json?.message || "Import failed.");
             }
         } catch (err) {
-            // Laravel validation errors come as 422 with {errors: {...}}
             const msg =
                 err?.data?.message ||
                 (err?.status === 422
@@ -331,7 +326,6 @@ function CsvImportPage() {
                     : "Upload failed.");
             setErrorMsg(msg);
 
-            // Show first validation error if present
             const errors = err?.data?.errors;
             if (errors && typeof errors === "object") {
                 const firstKey = Object.keys(errors)[0];
@@ -531,5 +525,3 @@ function CsvImportPage() {
         </div>
     );
 }
-
-createRoot(document.getElementById("root")).render(<CsvImportPage />);

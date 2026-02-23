@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -59,18 +60,16 @@ class CsvImportController extends Controller
     private string $defaultContactCompanyClassification = 'Technology';
 
     /**
-     * ✅ NEW: contact_profile.contact_source
-     * TODO: Replace with the allowed values from:
-     * sys.check_constraints for CK__contact_p__conta__7B264821
+     * contact_profile.contact_source
+     * TODO: Replace with actual allowed values from your DB CHECK constraint
      */
     private array $allowedContactSource = [
-        // EXAMPLE ONLY — replace these
-       'Etc',
-       'Purchased',
-       'Marketing',
-       'Sales',
-       'Linkedin',
-       'Apollo',
+        'Etc',
+        'Purchased',
+        'Marketing',
+        'Sales',
+        'Linkedin',
+        'Apollo',
     ];
     private string $defaultContactSource = 'etc';
 
@@ -146,24 +145,16 @@ class CsvImportController extends Controller
         'updated_at',
     ];
 
-    public function index()
-    {
-        return view('csv-import');
-    }
-
+    /**
+     * API endpoint: POST /api/csv-import
+     */
     public function store(Request $request)
     {
-        try {
-            $request->validate([
-                'file' => ['required', 'file', 'mimes:csv,txt', 'max:20480'],
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Validation failed.',
-                'errors' => $e->errors(),
-            ], 422);
-        }
+        // Because React sends `Accept: application/json`,
+        // Laravel will automatically return JSON for validation errors.
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt', 'max:20480'], // 20MB
+        ]);
 
         $path = $request->file('file')->getRealPath();
 
@@ -184,11 +175,13 @@ class CsvImportController extends Controller
             ], 400);
         }
 
-        $header = array_map(fn($h) => $this->normalizeHeader($h), $rawHeader);
+        $header = array_map(fn ($h) => $this->normalizeHeader((string)$h), $rawHeader);
 
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
-            if (count($data) === 1 && trim($data[0]) === '') continue;
+            if (count($data) === 1 && trim((string)$data[0]) === '') {
+                continue;
+            }
 
             $row = [];
             foreach ($header as $i => $col) {
@@ -205,8 +198,9 @@ class CsvImportController extends Controller
             ], 400);
         }
 
-        $hasEmail = in_array('contact_email', $header);
-        $hasHubspot = in_array('hubspot_id', $header);
+        $hasEmail = in_array('contact_email', $header, true);
+        $hasHubspot = in_array('hubspot_id', $header, true);
+
         if (!$hasEmail && !$hasHubspot) {
             return response()->json([
                 'ok' => false,
@@ -214,7 +208,7 @@ class CsvImportController extends Controller
             ], 422);
         }
 
-        $hasCompanyName = in_array('company_name', $header) || in_array('current_company', $header);
+        $hasCompanyName = in_array('company_name', $header, true) || in_array('current_company', $header, true);
 
         $stats = [
             'companies_created' => 0,
@@ -228,8 +222,9 @@ class CsvImportController extends Controller
 
         $meta = [
             'company_name_column_used' =>
-                in_array('company_name', $header) ? 'company_name' :
-                (in_array('current_company', $header) ? 'current_company' : null),
+                in_array('company_name', $header, true) ? 'company_name' :
+                (in_array('current_company', $header, true) ? 'current_company' : null),
+
             'contact_match_key' => $hasEmail ? 'contact_email' : 'hubspot_id',
 
             'company_source_allowed' => $this->allowedCompanySource,
@@ -238,29 +233,29 @@ class CsvImportController extends Controller
             'contact_persona_allowed' => $this->allowedContactPersona,
             'contact_company_classification_allowed' => $this->allowedContactCompanyClassification,
 
-            // ✅ NEW
             'contact_source_allowed' => $this->allowedContactSource,
         ];
 
         DB::transaction(function () use ($rows, $hasCompanyName, &$stats) {
             $now = now();
 
-            // ✅ valid BU set for FK safety
+            // valid BU set for FK safety
             $validBuIds = DB::table($this->buTable)
                 ->pluck('bu_id')
-                ->map(fn($x) => (int)$x)
+                ->map(fn ($x) => (int)$x)
                 ->all();
             $validBuSet = array_flip($validBuIds);
 
-            // 1) company names
+            // 1) company names from csv
             $companyNames = collect($rows)
-                ->map(fn($r) => $this->cleanCompanyName($r['company_name'] ?? ($r['current_company'] ?? null)))
+                ->map(fn ($r) => $this->cleanCompanyName($r['company_name'] ?? ($r['current_company'] ?? null)))
                 ->filter()
                 ->unique()
                 ->values();
 
             // 2) company map: name -> company_id
             $companyMap = [];
+
             if ($companyNames->count() > 0) {
                 $existing = DB::table($this->companyTable)
                     ->select('company_id', 'company_name')
@@ -271,10 +266,12 @@ class CsvImportController extends Controller
                     $companyMap[$this->cleanCompanyName($c->company_name)] = $c->company_id;
                 }
 
-                $missing = $companyNames->filter(fn($n) => !isset($companyMap[$n]))->values();
+                // insert missing companies
+                $missing = $companyNames->filter(fn ($n) => !isset($companyMap[$n]))->values();
+
                 if ($missing->count() > 0) {
-                    $insertCompanies = $missing->map(function ($name) use ($now) {
-                        return [
+                    $insertCompanies = $missing->map(function ($name) use ($now, $validBuSet) {
+                        $payload = [
                             'company_name' => $name,
                             'company_source' => $this->defaultCompanySource,
                             'company_classification' => $this->defaultCompanyClassification,
@@ -282,6 +279,11 @@ class CsvImportController extends Controller
                             'created_at' => $now,
                             'updated_at' => $now,
                         ];
+
+                        // enforce defaults are valid
+                        $payload = $this->enforceCompanyConstraints($payload, $validBuSet);
+
+                        return $payload;
                     })->all();
 
                     $colCount = count(array_keys($insertCompanies[0]));
@@ -300,10 +302,10 @@ class CsvImportController extends Controller
                 }
             }
 
-            // 3) optional company updates
+            // 3) optional company updates (if csv contains company fields)
             $csvHasCompanyData = collect($this->companyColumns)
-                ->reject(fn($c) => in_array($c, ['created_at', 'updated_at']))
-                ->some(fn($c) => $this->csvHasColumn($rows, $c));
+                ->reject(fn ($c) => in_array($c, ['created_at', 'updated_at'], true))
+                ->some(fn ($c) => $this->csvHasColumn($rows, $c));
 
             if ($csvHasCompanyData && $companyNames->count() > 0) {
                 $companies = DB::table($this->companyTable)
@@ -337,9 +339,9 @@ class CsvImportController extends Controller
                 }
             }
 
-            // 4) preload contacts by email/hubspot
+            // 4) preload contacts by email
             $emails = collect($rows)
-                ->map(fn($r) => $this->cleanEmail($r['contact_email'] ?? null))
+                ->map(fn ($r) => $this->cleanEmail($r['contact_email'] ?? null))
                 ->filter()
                 ->unique()
                 ->values();
@@ -356,8 +358,9 @@ class CsvImportController extends Controller
                 }
             }
 
+            // 4b) preload contacts by hubspot_id
             $hubspotIds = collect($rows)
-                ->map(fn($r) => $this->nullIfEmpty($r['hubspot_id'] ?? null))
+                ->map(fn ($r) => $this->nullIfEmpty($r['hubspot_id'] ?? null))
                 ->filter()
                 ->unique()
                 ->values();
@@ -375,7 +378,7 @@ class CsvImportController extends Controller
                 }
             }
 
-            // 5) build payloads
+            // 5) build insert/update payloads
             $toInsert = [];
             $toUpdate = [];
 
@@ -412,13 +415,14 @@ class CsvImportController extends Controller
                 }
             }
 
-            // ✅ chunk insert contacts
+            // chunk insert contacts (SQL Server 2100 params)
             if (count($toInsert) > 0) {
                 $colCount = count(array_keys($toInsert[0]));
                 $this->chunkedInsert($this->contactTable, $toInsert, $colCount, $stats);
                 $stats['contacts_created'] += count($toInsert);
             }
 
+            // update contacts one by one (safe)
             foreach ($toUpdate as $u) {
                 DB::table($this->contactTable)
                     ->where('contact_id', $u['contact_id'])
@@ -506,7 +510,7 @@ class CsvImportController extends Controller
             }
         }
 
-        // ✅ NEW: contact_source
+        // contact_source
         if (array_key_exists('contact_source', $payload)) {
             $val = $payload['contact_source'];
             if ($val === null || !in_array($val, $this->allowedContactSource, true)) {
@@ -577,7 +581,7 @@ class CsvImportController extends Controller
         $payload = [];
 
         foreach ($this->companyColumns as $col) {
-            if (in_array($col, ['created_at', 'updated_at'])) continue;
+            if (in_array($col, ['created_at', 'updated_at'], true)) continue;
             if (!array_key_exists($col, $r)) continue;
 
             $payload[$col] = $this->nullIfEmpty($r[$col]);
@@ -592,7 +596,7 @@ class CsvImportController extends Controller
         $payload = [];
 
         foreach ($this->contactColumns as $col) {
-            if (in_array($col, ['created_at', 'updated_at'])) continue;
+            if (in_array($col, ['created_at', 'updated_at'], true)) continue;
             if ($col === 'company_id') continue;
 
             if (!array_key_exists($col, $r)) continue;
@@ -618,7 +622,7 @@ class CsvImportController extends Controller
 
         $payload['updated_at'] = $now;
 
-        // ✅ Enforce constraints (persona + classification + source + bu)
+        // enforce constraints (persona + classification + source + bu)
         $payload = $this->enforceContactConstraints($payload, $validBuSet);
 
         return $payload;
@@ -632,7 +636,7 @@ class CsvImportController extends Controller
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) return $v;
 
         try {
-            return \Carbon\Carbon::parse($v)->format('Y-m-d');
+            return Carbon::parse($v)->format('Y-m-d');
         } catch (\Throwable $e) {
             return null;
         }
