@@ -1,7 +1,22 @@
-export default function Header({ user }) {
+// resources/js/Components/Layout/Header.jsx
+import React from "react";
+
+export default function Header({ user, onMenu }) {
     return (
         <header className="appHeader">
-            <img src="/logo.png" className="brandLogo" alt="CLaaS 2SaaS" />
+            <div className="headerLeft">
+                <button
+                    type="button"
+                    className="mobileMenuBtn"
+                    onClick={onMenu}
+                    aria-label="Open menu"
+                    title="Menu"
+                >
+                    ☰
+                </button>
+
+                <img src="/logo.png" className="brandLogo" alt="CLaaS 2SaaS" />
+            </div>
 
             <div className="userProfile">
                 <div className="avatarCircle">
