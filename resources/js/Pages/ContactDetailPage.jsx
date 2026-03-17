@@ -1,1203 +1,1371 @@
-// resources/js/pages/ContactDetailPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import { useNavigate, useParams } from "react-router-dom";
-import Modal from "../Components/Modal";
+import React, { useEffect, useState } from "react";
 
-function Field({ label, value }) {
+function CDField({ label, value }) {
     return (
-        <div className="py-2">
-            <div className="text-xs font-semibold text-gray-600">{label}</div>
-            <div className="text-sm text-gray-900 break-words">
-                {value || "—"}
-            </div>
+        <div className="cd-field">
+            <div className="cd-label">{label}</div>
+            <div className="cd-value">{value}</div>
         </div>
     );
-}
-
-function Section({ title, onEdit, children }) {
-    return (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-gray-100">
-                <div className="text-sm font-semibold text-gray-900">
-                    {title}
-                </div>
-                <button
-                    type="button"
-                    onClick={onEdit}
-                    className="rounded-md bg-green-700 px-4 py-1.5 text-xs font-semibold text-white hover:bg-green-800"
-                >
-                    Edit
-                </button>
-            </div>
-            <div className="px-4 sm:px-5 py-4">{children}</div>
-        </div>
-    );
-}
-
-function actionFromException(exceptionType = "") {
-    const t = (exceptionType || "").toLowerCase();
-    if (t.includes("not verified"))
-        return { action: "VERIFY", label: "Verify Lead", sop: "12h" };
-    if (t.includes("not confirmed"))
-        return {
-            action: "LOG_CONFIRMATION",
-            label: "Log Confirmation",
-            sop: "24h",
-        };
-    if (t.includes("no-show"))
-        return {
-            action: "START_RETARGET",
-            label: "Start Retarget",
-            sop: "48h",
-        };
-    if (t.includes("follow-up overdue") || t.includes("overdue"))
-        return { action: "SEND_FOLLOWUP", label: "Send Follow-up", sop: "2h" };
-    return { action: "VERIFY", label: "Verify Lead", sop: "12h" };
 }
 
 export default function ContactDetailPage() {
-    const { id } = useParams();
-    const navigate = useNavigate();
-
-    const [loading, setLoading] = useState(true);
-    const [source, setSource] = useState("db");
-    const [error, setError] = useState("");
-    const [data, setData] = useState(null);
-
-    const [editOpen, setEditOpen] = useState(false);
-    const [editSection, setEditSection] = useState(null);
-
-    const [actionOpen, setActionOpen] = useState(false);
-
-    const [docOpen, setDocOpen] = useState(false);
-    const [docMode, setDocMode] = useState("upload");
-
-    const [form, setForm] = useState({
-        contact: {
-            first_name: "",
-            last_name: "",
-            mobile: "",
-            whatsapp: "",
-            preferred_channel: "",
-            student_nrc: "",
-        },
-        lead_qualification: {
-            inquiry_type: "",
-            solution_course_interest: "",
-            current_company: "",
-            current_job_role: "",
-            target_career_goals: "",
-            qualification_score: "",
-            notes: "",
-        },
-        documents: {
-            cv_status: "",
-            last_cv_upload_date: "",
-            document_notes: "",
-            cala_form: "",
-            cv_url: "",
-            cala_url: "",
-        },
-        verify: {
-            verification_result: "Verified",
-            document_status: "CV Received",
-            notes: "",
-        },
-        confirm: { channel: "Call", outcome: "Confirmed", notes: "" },
-        retarget: {
-            retarget_channel: "WhatsApp",
-            result: "Attempted - No Reply",
-            notes: "",
-        },
-        followup: {
-            followup_type: "Thank-you Note",
-            sent_via: "Email",
-            message_summary: "",
-        },
-    });
-
-    async function load() {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await axios.get(
-                `/api/contacts/${encodeURIComponent(id)}`,
-            );
-            setSource(res.data?.source ?? "db");
-            setData(res.data?.data ?? null);
-        } catch (e) {
-            setError(
-                e?.response?.data?.message ||
-                    e.message ||
-                    "Failed to load contact",
-            );
-            setData(null);
-        } finally {
-            setLoading(false);
-        }
-    }
+    const [activeTab, setActiveTab] = useState("overview");
+    const [workspaceOpen, setWorkspaceOpen] = useState(false);
+    const [workspaceTab, setWorkspaceTab] = useState("notes");
 
     useEffect(() => {
-        load();
-    }, [id]);
-
-    useEffect(() => {
-        if (!data) return;
-
-        const contact = data.contact || {};
-        const lead = data.lead_qualification || {};
-        const docs = data.documents || {};
-
-        setForm((prev) => ({
-            ...prev,
-            contact: {
-                first_name:
-                    contact.first_name ||
-                    (data.name ? data.name.split(" ")[0] : ""),
-                last_name:
-                    contact.last_name ||
-                    (data.name ? data.name.split(" ").slice(1).join(" ") : ""),
-                mobile: contact.mobile || "",
-                whatsapp: contact.whatsapp || "",
-                preferred_channel: contact.preferred_channel || "",
-                student_nrc: contact.student_nrc || "",
-            },
-            lead_qualification: {
-                inquiry_type: lead.inquiry_type || "",
-                solution_course_interest: lead.solution_course_interest || "",
-                current_company: lead.current_company || "",
-                current_job_role: lead.current_job_role || "",
-                target_career_goals: lead.target_career_goals || "",
-                qualification_score: lead.qualification_score || "",
-                notes: lead.notes || "",
-            },
-            documents: {
-                cv_status: docs.cv_status || data.documents || "",
-                last_cv_upload_date: docs.last_cv_upload_date || "",
-                document_notes: docs.document_notes || "",
-                cala_form: docs.cala_form || "",
-                cv_url: docs.cv_url || "",
-                cala_url: docs.cala_url || "",
-            },
-        }));
-    }, [data]);
-
-    const meta = useMemo(
-        () => actionFromException(data?.exception_type || ""),
-        [data],
-    );
-
-    const header = useMemo(() => {
-        const name = data?.name || "—";
-        const owner = data?.owner || "—";
-        const bu = data?.bu || "—";
-        const lastAction = data?.last_action || meta.label;
-        const lastAt = data?.last_action_at || "—";
-        return {
-            title: `Contacts Detail - ${name}`,
-            metaLeft: `Last SOP Action: ${lastAction}  •  ${lastAt}`,
-            metaRight: `${owner}  •  ${bu}`,
+        const onKeyDown = (e) => {
+            if (e.key === "Escape") {
+                setWorkspaceOpen(false);
+            }
         };
-    }, [data, meta]);
 
-    function openEdit(which) {
-        setEditSection(which);
-        setEditOpen(true);
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, []);
+
+    function openWorkspace(tab) {
+        setWorkspaceTab(tab);
+        setWorkspaceOpen(true);
     }
-
-    async function saveEdit() {
-        const payload =
-            editSection === "contact"
-                ? { contact: form.contact }
-                : editSection === "lead"
-                  ? { lead_qualification: form.lead_qualification }
-                  : { documents: form.documents };
-
-        await axios.patch(`/api/contacts/${encodeURIComponent(id)}`, payload);
-
-        setEditOpen(false);
-        setEditSection(null);
-        await load();
-    }
-
-    function openAction() {
-        setActionOpen(true);
-    }
-
-    async function saveAction() {
-        let payloadForm = {};
-        if (meta.action === "VERIFY") payloadForm = form.verify;
-        if (meta.action === "LOG_CONFIRMATION") payloadForm = form.confirm;
-        if (meta.action === "START_RETARGET") payloadForm = form.retarget;
-        if (meta.action === "SEND_FOLLOWUP") payloadForm = form.followup;
-
-        await axios.post(`/api/contacts/${encodeURIComponent(id)}/action`, {
-            action: meta.action,
-            form: payloadForm,
-        });
-
-        setActionOpen(false);
-        await load();
-    }
-
-    function openDoc(mode) {
-        setDocMode(mode);
-        setDocOpen(true);
-    }
-
-    function openIfUrl(url) {
-        const u = (url || "").trim();
-        if (!u) return false;
-        window.open(u, "_blank", "noopener,noreferrer");
-        return true;
-    }
-
-    async function saveDocLinks() {
-        await axios.patch(`/api/contacts/${encodeURIComponent(id)}`, {
-            documents: { ...form.documents },
-        });
-
-        setDocOpen(false);
-        await load();
-    }
-
-    function Input({ label, value, onChange, placeholder = "" }) {
-        return (
-            <div>
-                <div className="mb-1 text-xs font-semibold text-gray-600">
-                    {label}
-                </div>
-                <input
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder={placeholder}
-                />
-            </div>
-        );
-    }
-
-    function Select({ label, value, onChange, options }) {
-        return (
-            <div>
-                <div className="mb-1 text-xs font-semibold text-gray-600">
-                    {label}
-                </div>
-                <select
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                >
-                    {options.map((o) => (
-                        <option key={o} value={o}>
-                            {o}
-                        </option>
-                    ))}
-                </select>
-            </div>
-        );
-    }
-
-    function TextArea({ label, value, onChange, placeholder = "" }) {
-        return (
-            <div>
-                <div className="mb-1 text-xs font-semibold text-gray-600">
-                    {label}
-                </div>
-                <textarea
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-                    rows={4}
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder={placeholder}
-                />
-            </div>
-        );
-    }
-
-    // YOUR existing modal bodies (unchanged)
-    function renderEditBody() {
-        if (editSection === "contact") {
-            return (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Input
-                        label="First Name"
-                        value={form.contact.first_name}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                contact: { ...p.contact, first_name: v },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Last Name"
-                        value={form.contact.last_name}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                contact: { ...p.contact, last_name: v },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Mobile"
-                        value={form.contact.mobile}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                contact: { ...p.contact, mobile: v },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="WhatsApp"
-                        value={form.contact.whatsapp}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                contact: { ...p.contact, whatsapp: v },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Preferred Channel"
-                        value={form.contact.preferred_channel}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                contact: { ...p.contact, preferred_channel: v },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Student NRC"
-                        value={form.contact.student_nrc}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                contact: { ...p.contact, student_nrc: v },
-                            }))
-                        }
-                    />
-                </div>
-            );
-        }
-
-        if (editSection === "lead") {
-            return (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Input
-                        label="Inquiry Type"
-                        value={form.lead_qualification.inquiry_type}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                lead_qualification: {
-                                    ...p.lead_qualification,
-                                    inquiry_type: v,
-                                },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Solution / Course Interest"
-                        value={form.lead_qualification.solution_course_interest}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                lead_qualification: {
-                                    ...p.lead_qualification,
-                                    solution_course_interest: v,
-                                },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Current Company"
-                        value={form.lead_qualification.current_company}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                lead_qualification: {
-                                    ...p.lead_qualification,
-                                    current_company: v,
-                                },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Current Job Role"
-                        value={form.lead_qualification.current_job_role}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                lead_qualification: {
-                                    ...p.lead_qualification,
-                                    current_job_role: v,
-                                },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Target Career Goals"
-                        value={form.lead_qualification.target_career_goals}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                lead_qualification: {
-                                    ...p.lead_qualification,
-                                    target_career_goals: v,
-                                },
-                            }))
-                        }
-                    />
-                    <Input
-                        label="Qualification Score"
-                        value={form.lead_qualification.qualification_score}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                lead_qualification: {
-                                    ...p.lead_qualification,
-                                    qualification_score: v,
-                                },
-                            }))
-                        }
-                    />
-                    <div className="sm:col-span-2">
-                        <TextArea
-                            label="Notes"
-                            value={form.lead_qualification.notes}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    lead_qualification: {
-                                        ...p.lead_qualification,
-                                        notes: v,
-                                    },
-                                }))
-                            }
-                            placeholder="Add notes..."
-                        />
-                    </div>
-                </div>
-            );
-        }
-
-        return (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Input
-                    label="CV Status"
-                    value={form.documents.cv_status}
-                    onChange={(v) =>
-                        setForm((p) => ({
-                            ...p,
-                            documents: { ...p.documents, cv_status: v },
-                        }))
-                    }
-                />
-                <Input
-                    label="CaLA Form"
-                    value={form.documents.cala_form}
-                    onChange={(v) =>
-                        setForm((p) => ({
-                            ...p,
-                            documents: { ...p.documents, cala_form: v },
-                        }))
-                    }
-                />
-                <Input
-                    label="Last CV Upload Date"
-                    value={form.documents.last_cv_upload_date}
-                    onChange={(v) =>
-                        setForm((p) => ({
-                            ...p,
-                            documents: {
-                                ...p.documents,
-                                last_cv_upload_date: v,
-                            },
-                        }))
-                    }
-                />
-                <div className="sm:col-span-2">
-                    <TextArea
-                        label="Document Notes"
-                        value={form.documents.document_notes}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                documents: {
-                                    ...p.documents,
-                                    document_notes: v,
-                                },
-                            }))
-                        }
-                        placeholder="Add notes..."
-                    />
-                </div>
-                <div className="sm:col-span-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Input
-                        label="CV URL"
-                        value={form.documents.cv_url}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                documents: { ...p.documents, cv_url: v },
-                            }))
-                        }
-                        placeholder="https://..."
-                    />
-                    <Input
-                        label="CaLA URL"
-                        value={form.documents.cala_url}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                documents: { ...p.documents, cala_url: v },
-                            }))
-                        }
-                        placeholder="https://..."
-                    />
-                </div>
-            </div>
-        );
-    }
-
-    function renderActionBody() {
-        const name = data?.name || "—";
-
-        // keep your existing logic exactly, just reusing Select/TextArea components:
-        if (meta.action === "VERIFY") {
-            return (
-                <div className="text-sm text-gray-700">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                        <span className="truncate max-w-[200px]">{name}</span>
-                        <span className="text-gray-400">•</span>
-                        <span>Lead #{id}</span>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <Select
-                            label="Verification Result"
-                            value={form.verify.verification_result}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    verify: {
-                                        ...p.verify,
-                                        verification_result: v,
-                                    },
-                                }))
-                            }
-                            options={["Verified", "Not Verified"]}
-                        />
-                        <Select
-                            label="Document Status"
-                            value={form.verify.document_status}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    verify: { ...p.verify, document_status: v },
-                                }))
-                            }
-                            options={[
-                                "CV Received",
-                                "CV Missing",
-                                "CaLA Received",
-                                "CaLA Missing",
-                            ]}
-                        />
-                    </div>
-
-                    <div className="mt-4">
-                        <TextArea
-                            label="Notes"
-                            value={form.verify.notes}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    verify: { ...p.verify, notes: v },
-                                }))
-                            }
-                            placeholder="Add any exception notes..."
-                        />
-                    </div>
-                </div>
-            );
-        }
-
-        if (meta.action === "LOG_CONFIRMATION") {
-            return (
-                <div className="text-sm text-gray-700">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                        <span className="truncate max-w-[200px]">{name}</span>
-                        <span className="text-gray-400">•</span>
-                        <span>Lead #{id}</span>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <Select
-                            label="Channel"
-                            value={form.confirm.channel}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    confirm: { ...p.confirm, channel: v },
-                                }))
-                            }
-                            options={["Call", "Email", "WhatsApp"]}
-                        />
-                        <Select
-                            label="Outcome"
-                            value={form.confirm.outcome}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    confirm: { ...p.confirm, outcome: v },
-                                }))
-                            }
-                            options={["Confirmed", "Not Confirmed"]}
-                        />
-                    </div>
-
-                    <div className="mt-4">
-                        <TextArea
-                            label="Notes"
-                            value={form.confirm.notes}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    confirm: { ...p.confirm, notes: v },
-                                }))
-                            }
-                            placeholder="What happened? Any reschedule details?"
-                        />
-                    </div>
-                </div>
-            );
-        }
-
-        if (meta.action === "START_RETARGET") {
-            return (
-                <div className="text-sm text-gray-700">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                        <span className="truncate max-w-[200px]">{name}</span>
-                        <span className="text-gray-400">•</span>
-                        <span>Lead #{id}</span>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <Select
-                            label="Retarget Channel"
-                            value={form.retarget.retarget_channel}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    retarget: {
-                                        ...p.retarget,
-                                        retarget_channel: v,
-                                    },
-                                }))
-                            }
-                            options={["WhatsApp", "Call", "Email"]}
-                        />
-                        <Select
-                            label="Result"
-                            value={form.retarget.result}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    retarget: { ...p.retarget, result: v },
-                                }))
-                            }
-                            options={[
-                                "Attempted - No Reply",
-                                "Confirmed Next Step",
-                                "Wrong Contact",
-                            ]}
-                        />
-                    </div>
-
-                    <div className="mt-4">
-                        <TextArea
-                            label="Notes"
-                            value={form.retarget.notes}
-                            onChange={(v) =>
-                                setForm((p) => ({
-                                    ...p,
-                                    retarget: { ...p.retarget, notes: v },
-                                }))
-                            }
-                            placeholder="Message summary + next step..."
-                        />
-                    </div>
-                </div>
-            );
-        }
-
-        return (
-            <div className="text-sm text-gray-700">
-                <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                    <span className="truncate max-w-[200px]">{name}</span>
-                    <span className="text-gray-400">•</span>
-                    <span>Lead #{id}</span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Select
-                        label="Follow-up Type"
-                        value={form.followup.followup_type}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                followup: { ...p.followup, followup_type: v },
-                            }))
-                        }
-                        options={["Thank-you Note", "Reminder", "Reschedule"]}
-                    />
-                    <Select
-                        label="Sent Via"
-                        value={form.followup.sent_via}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                followup: { ...p.followup, sent_via: v },
-                            }))
-                        }
-                        options={["Email", "WhatsApp", "Call"]}
-                    />
-                </div>
-
-                <div className="mt-4">
-                    <TextArea
-                        label="Message Summary"
-                        value={form.followup.message_summary}
-                        onChange={(v) =>
-                            setForm((p) => ({
-                                ...p,
-                                followup: { ...p.followup, message_summary: v },
-                            }))
-                        }
-                        placeholder="Short summary of what was sent..."
-                    />
-                </div>
-            </div>
-        );
-    }
-
-    const contactInfo = data?.contact || {};
-    const lead = data?.lead_qualification || {};
-    const docs = data?.documents || {};
-
-    const cvUrl = (docs.cv_url || form.documents.cv_url || "").trim();
-    const calaUrl = (docs.cala_url || form.documents.cala_url || "").trim();
 
     return (
-        <div className="p-3 sm:p-6">
-            <div className="mx-auto max-w-5xl">
-                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-                    <div className="px-4 sm:px-5 py-4">
-                        <div className="text-sm font-semibold text-gray-900">
-                            {header.title}
-                        </div>
-
-                        {/* stack on mobile */}
-                        <div className="mt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2 text-xs text-gray-500">
-                            <div className="break-words">{header.metaLeft}</div>
-                            <div className="text-gray-600 break-words">
-                                {header.metaRight}
-                            </div>
-                        </div>
-
-                        {/* full width buttons on mobile */}
-                        <div className="mt-3 grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
-                            <button
-                                type="button"
-                                onClick={() => navigate("/contacts")}
-                                className="w-full sm:w-auto rounded-md bg-green-700 px-4 py-2 text-xs font-semibold text-white hover:bg-green-800"
-                            >
-                                Go back
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={openAction}
-                                className="w-full sm:w-auto rounded-md bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700"
-                            >
-                                {meta.label}
-                            </button>
-                        </div>
-
-                        {error ? (
-                            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                                {error}
-                            </div>
-                        ) : null}
-
-                        <div className="mt-3 text-xs text-gray-400">
-                            Data source:{" "}
-                            <span className="font-medium text-gray-600">
-                                {source}
-                            </span>
-                            {source === "mock"
-                                ? " (DB empty → mock data for UI preview)"
-                                : ""}
-                        </div>
-                    </div>
+        <div className="contact-detail-page">
+            <div className="cd-topbar">
+                <div className="cd-actions">
+                    <button
+                        className="cd-btn"
+                        onClick={() => openWorkspace("notes")}
+                    >
+                        Log Note
+                    </button>
+                    <button
+                        className="cd-btn"
+                        onClick={() => openWorkspace("emails")}
+                    >
+                        Send Reminder
+                    </button>
+                    <button
+                        className="cd-btn"
+                        onClick={() => openWorkspace("documents")}
+                    >
+                        Request CV
+                    </button>
+                    <button
+                        className="cd-btn"
+                        onClick={() => openWorkspace("meetings")}
+                    >
+                        Reschedule
+                    </button>
+                    <button
+                        className="cd-btn cd-btn-primary"
+                        onClick={() => openWorkspace("tasks")}
+                    >
+                        Create Follow-Up
+                    </button>
+                    <button className="cd-btn cd-btn-success">
+                        Convert to Opportunity
+                    </button>
                 </div>
-
-                <div className="mt-4 sm:mt-5 space-y-4 sm:space-y-5">
-                    <Section
-                        title="Contact Information"
-                        onEdit={() => openEdit("contact")}
-                    >
-                        {loading ? (
-                            <div className="text-sm text-gray-500">
-                                Loading…
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10">
-                                <Field
-                                    label="First Name"
-                                    value={
-                                        contactInfo.first_name ||
-                                        form.contact.first_name
-                                    }
-                                />
-                                <Field
-                                    label="Last Name"
-                                    value={
-                                        contactInfo.last_name ||
-                                        form.contact.last_name
-                                    }
-                                />
-                                <Field
-                                    label="Contact Email"
-                                    value={data?.email}
-                                />
-                                <Field
-                                    label="Mobile"
-                                    value={
-                                        contactInfo.mobile ||
-                                        form.contact.mobile
-                                    }
-                                />
-                                <Field
-                                    label="WhatsApp"
-                                    value={
-                                        contactInfo.whatsapp ||
-                                        form.contact.whatsapp
-                                    }
-                                />
-                                <Field
-                                    label="Preferred Channel"
-                                    value={
-                                        contactInfo.preferred_channel ||
-                                        form.contact.preferred_channel
-                                    }
-                                />
-                                <Field
-                                    label="Student NRC"
-                                    value={
-                                        contactInfo.student_nrc ||
-                                        form.contact.student_nrc
-                                    }
-                                />
-                                <Field label="Business Unit" value={data?.bu} />
-                            </div>
-                        )}
-                    </Section>
-
-                    <Section
-                        title="Lead Qualification"
-                        onEdit={() => openEdit("lead")}
-                    >
-                        {loading ? (
-                            <div className="text-sm text-gray-500">
-                                Loading…
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10">
-                                <Field
-                                    label="Inquiry Type"
-                                    value={
-                                        lead.inquiry_type ||
-                                        form.lead_qualification.inquiry_type
-                                    }
-                                />
-                                <Field
-                                    label="Solution / Course Interest"
-                                    value={
-                                        lead.solution_course_interest ||
-                                        form.lead_qualification
-                                            .solution_course_interest
-                                    }
-                                />
-                                <Field
-                                    label="Current Company"
-                                    value={
-                                        lead.current_company ||
-                                        form.lead_qualification.current_company
-                                    }
-                                />
-                                <Field
-                                    label="Current Job Role"
-                                    value={
-                                        lead.current_job_role ||
-                                        form.lead_qualification.current_job_role
-                                    }
-                                />
-                                <Field
-                                    label="Target Career Goals"
-                                    value={
-                                        lead.target_career_goals ||
-                                        form.lead_qualification
-                                            .target_career_goals
-                                    }
-                                />
-                                <Field
-                                    label="Qualification Score"
-                                    value={
-                                        lead.qualification_score ||
-                                        form.lead_qualification
-                                            .qualification_score
-                                    }
-                                />
-
-                                <div className="py-2 sm:col-span-2">
-                                    <div className="text-xs font-semibold text-gray-600">
-                                        Notes
-                                    </div>
-                                    <div className="text-sm text-gray-900 break-words">
-                                        {lead.notes ||
-                                            form.lead_qualification.notes ||
-                                            "—"}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </Section>
-
-                    <Section
-                        title="Documents"
-                        onEdit={() => openEdit("documents")}
-                    >
-                        {loading ? (
-                            <div className="text-sm text-gray-500">
-                                Loading…
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10">
-                                <Field
-                                    label="CV Status"
-                                    value={
-                                        docs.cv_status ||
-                                        data?.documents ||
-                                        form.documents.cv_status
-                                    }
-                                />
-                                <Field
-                                    label="CaLA Form"
-                                    value={
-                                        docs.cala_form ||
-                                        form.documents.cala_form
-                                    }
-                                />
-                                <Field
-                                    label="Last CV Upload Date"
-                                    value={
-                                        docs.last_cv_upload_date ||
-                                        form.documents.last_cv_upload_date
-                                    }
-                                />
-
-                                <div className="py-2">
-                                    <div className="text-xs font-semibold text-gray-600">
-                                        Links
-                                    </div>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                if (!openIfUrl(cvUrl))
-                                                    openDoc("cv");
-                                            }}
-                                            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-                                        >
-                                            View CV
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                if (!openIfUrl(calaUrl))
-                                                    openDoc("cala");
-                                            }}
-                                            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-                                        >
-                                            View CaLA
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => openDoc("upload")}
-                                            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-                                        >
-                                            Upload
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="py-2 sm:col-span-2">
-                                    <div className="text-xs font-semibold text-gray-600">
-                                        Document Notes
-                                    </div>
-                                    <div className="text-sm text-gray-900 break-words">
-                                        {docs.document_notes ||
-                                            form.documents.document_notes ||
-                                            "—"}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </Section>
-                </div>
-
-                {/* EDIT MODAL */}
-                <Modal
-                    open={editOpen}
-                    title={
-                        editSection === "contact"
-                            ? "Edit Contact Information"
-                            : editSection === "lead"
-                              ? "Edit Lead Qualification"
-                              : "Edit Documents"
-                    }
-                    subtitle="Update fields and save."
-                    onClose={() => {
-                        setEditOpen(false);
-                        setEditSection(null);
-                    }}
-                    footer={
-                        <>
-                            <button
-                                className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                                onClick={() => {
-                                    setEditOpen(false);
-                                    setEditSection(null);
-                                }}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                                onClick={saveEdit}
-                            >
-                                Save
-                            </button>
-                        </>
-                    }
-                >
-                    {renderEditBody()}
-                </Modal>
-
-                {/* SOP ACTION MODAL */}
-                <Modal
-                    open={actionOpen}
-                    title={`${meta.label} (SOP: ${meta.sop})`}
-                    subtitle="Confirm required fields and record the action."
-                    onClose={() => setActionOpen(false)}
-                    footer={
-                        <>
-                            <button
-                                className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                                onClick={() => setActionOpen(false)}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                                onClick={saveAction}
-                            >
-                                Save
-                            </button>
-                        </>
-                    }
-                >
-                    {renderActionBody()}
-                </Modal>
-
-                {/* DOC LINKS MODAL */}
-                <Modal
-                    open={docOpen}
-                    title={
-                        docMode === "cv"
-                            ? "CV Link"
-                            : docMode === "cala"
-                              ? "CaLA Link"
-                              : "Upload Document Links"
-                    }
-                    subtitle="Add a link so the buttons can open the document."
-                    onClose={() => setDocOpen(false)}
-                    footer={
-                        <>
-                            <button
-                                className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                                onClick={() => setDocOpen(false)}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                                onClick={saveDocLinks}
-                            >
-                                Save
-                            </button>
-                        </>
-                    }
-                >
-                    <div className="grid grid-cols-1 gap-4">
-                        {docMode !== "cala" ? (
-                            <Input
-                                label="CV URL"
-                                value={form.documents.cv_url || ""}
-                                onChange={(v) =>
-                                    setForm((p) => ({
-                                        ...p,
-                                        documents: {
-                                            ...p.documents,
-                                            cv_url: v,
-                                        },
-                                    }))
-                                }
-                                placeholder="https://..."
-                            />
-                        ) : null}
-
-                        {docMode !== "cv" ? (
-                            <Input
-                                label="CaLA URL"
-                                value={form.documents.cala_url || ""}
-                                onChange={(v) =>
-                                    setForm((p) => ({
-                                        ...p,
-                                        documents: {
-                                            ...p.documents,
-                                            cala_url: v,
-                                        },
-                                    }))
-                                }
-                                placeholder="https://..."
-                            />
-                        ) : null}
-
-                        <div className="text-xs text-gray-500">
-                            If your database doesn’t store file links yet, you
-                            can use these overrides for UI testing.
-                        </div>
-                    </div>
-                </Modal>
             </div>
+
+            <div className="cd-layout">
+                <section className="cd-panel cd-left">
+                    <div className="cd-profile">
+                        <h1>Rong Wei Toh</h1>
+                        <div className="cd-subtext">
+                            Retail prospect · Contact detail page
+                        </div>
+                        <div className="cd-subtext">
+                            rong_wei1985@yahoo.com.sg
+                        </div>
+                    </div>
+
+                    <div className="cd-quick-actions">
+                        <button
+                            className="cd-qa"
+                            onClick={() => openWorkspace("notes")}
+                        >
+                            <span className="cd-qa-icon">📝</span>
+                            <span>Note</span>
+                        </button>
+                        <button
+                            className="cd-qa"
+                            onClick={() => openWorkspace("emails")}
+                        >
+                            <span className="cd-qa-icon">✉</span>
+                            <span>Email</span>
+                        </button>
+                        <button
+                            className="cd-qa"
+                            onClick={() => openWorkspace("calls")}
+                        >
+                            <span className="cd-qa-icon">☎</span>
+                            <span>Call</span>
+                        </button>
+                        <button
+                            className="cd-qa"
+                            onClick={() => openWorkspace("tasks")}
+                        >
+                            <span className="cd-qa-icon">✓</span>
+                            <span>Task</span>
+                        </button>
+                        <button
+                            className="cd-qa"
+                            onClick={() => openWorkspace("meetings")}
+                        >
+                            <span className="cd-qa-icon">📅</span>
+                            <span>Meet</span>
+                        </button>
+                    </div>
+
+                    <div className="cd-section">
+                        <div className="cd-section-head">
+                            <div className="cd-section-title">
+                                Initial Data Verification
+                            </div>
+                            <div className="cd-link-action">Verified</div>
+                        </div>
+
+                        <div className="cd-field-list">
+                            <CDField label="Contact ID" value="CNT-000412" />
+                            <CDField label="HubSpot ID" value="HS-918472" />
+                            <CDField label="First Name" value="Rong Wei" />
+                            <CDField label="Last Name" value="Toh" />
+                            <CDField
+                                label="Contact Email"
+                                value="rong_wei1985@yahoo.com.sg"
+                            />
+                            <CDField label="Mobile" value="+65 9123 4567" />
+                            <CDField
+                                label="WhatsApp Number"
+                                value="+65 9123 4567"
+                            />
+                            <CDField label="Business Unit" value="Retail" />
+                            <CDField label="Region" value="Singapore" />
+                            <CDField
+                                label="Current Company"
+                                value="EduCLaaS Learning Partners Pte Ltd"
+                            />
+                            <CDField
+                                label="Current Job Role"
+                                value="Operations Manager"
+                            />
+                            <CDField
+                                label="LinkedIn ID"
+                                value="linkedin.com/in/rongwei-toh"
+                            />
+                            <CDField
+                                label="Contact Source"
+                                value="Apollo / LinkedIn"
+                            />
+                            <CDField
+                                label="Contact Source Detail"
+                                value="Retail sales qualification import"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="cd-section">
+                        <div className="cd-section-head">
+                            <div className="cd-section-title">
+                                Engagement & Lifecycle
+                            </div>
+                            <div className="cd-link-action">Edit</div>
+                        </div>
+
+                        <div className="cd-field-list">
+                            <CDField
+                                label="Contact Status"
+                                value="Meeting Confirmed"
+                            />
+                            <CDField label="CILOS Status" value="Leads" />
+                            <CDField
+                                label="CILOS Stage"
+                                value="Qualification"
+                            />
+                            <CDField
+                                label="CILOS Stage Entry Date"
+                                value="2026-03-06"
+                            />
+                            <CDField
+                                label="Previous CILOS Status"
+                                value="Interest"
+                            />
+                            <CDField
+                                label="Stage Change Reason"
+                                value="Meeting completed and qualified to lead"
+                            />
+                            <CDField label="Engagement Level" value="Hot" />
+                            <CDField
+                                label="Qualification Score"
+                                value="84 / 100"
+                            />
+                            <CDField
+                                label="Expected Close Date"
+                                value="2026-04-20"
+                            />
+                            <CDField
+                                label="Opportunity Type"
+                                value="Bronze-ready"
+                            />
+                            <CDField label="Number of Follow-Ups" value="2" />
+                            <CDField
+                                label="Retarget Status"
+                                value="Not Applicable"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="cd-section">
+                        <div className="cd-section-head">
+                            <div className="cd-section-title">
+                                CV & Document Tracking
+                            </div>
+                            <div className="cd-link-action">Open Docs</div>
+                        </div>
+
+                        <div className="cd-field-list">
+                            <CDField label="Contact CV" value="Uploaded" />
+                            <CDField label="CV Status" value="Complete" />
+                            <CDField
+                                label="Highest Qualification"
+                                value="Bachelor’s Degree"
+                            />
+                            <CDField
+                                label="Last CV Upload Date"
+                                value="2026-03-05"
+                            />
+                            <CDField
+                                label="Document Tracking ID"
+                                value="DOC-72191"
+                            />
+                            <CDField
+                                label="Document Type"
+                                value="CV / Proposal Summary / Case Study"
+                            />
+                            <CDField
+                                label="Document Status"
+                                value="CV Complete · Proposal Summary Sent"
+                            />
+                            <CDField
+                                label="Document URL"
+                                value="secure-link://documents/contact/CNT-000412"
+                            />
+                            <CDField
+                                label="Uploaded Date"
+                                value="2026-03-05 10:42"
+                            />
+                        </div>
+                    </div>
+                </section>
+
+                <section className="cd-panel cd-middle">
+                    <div className="cd-header-card">
+                        <h2>Rong Wei Toh</h2>
+                        <div className="cd-subtext">
+                            Retail contact detail · SOP-aligned qualification
+                            and follow-up workspace
+                        </div>
+
+                        <div className="cd-tag-row">
+                            <span className="cd-badge cd-badge-active">
+                                Lead Qualified
+                            </span>
+                            <span className="cd-badge cd-badge-info">
+                                Meeting Confirmed
+                            </span>
+                            <span className="cd-badge cd-badge-warn">
+                                Reminder Pending
+                            </span>
+                            <span className="cd-badge cd-badge-purple">
+                                Bronze-Ready
+                            </span>
+                        </div>
+
+                        <div className="cd-stats">
+                            <div className="cd-stat">
+                                <div className="cd-stat-k">
+                                    Engagement Score
+                                </div>
+                                <div className="cd-stat-v">84</div>
+                            </div>
+                            <div className="cd-stat">
+                                <div className="cd-stat-k">Messaging Score</div>
+                                <div className="cd-stat-v">78</div>
+                            </div>
+                            <div className="cd-stat">
+                                <div className="cd-stat-k">Follow-Ups</div>
+                                <div className="cd-stat-v">2</div>
+                            </div>
+                            <div className="cd-stat">
+                                <div className="cd-stat-k">No-Show Count</div>
+                                <div className="cd-stat-v">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="cd-tabs">
+                        <button
+                            className={`cd-tab ${
+                                activeTab === "overview" ? "active" : ""
+                            }`}
+                            onClick={() => setActiveTab("overview")}
+                        >
+                            Overview
+                        </button>
+                        <button
+                            className={`cd-tab ${
+                                activeTab === "meeting" ? "active" : ""
+                            }`}
+                            onClick={() => setActiveTab("meeting")}
+                        >
+                            Meeting & Reminder
+                        </button>
+                        <button
+                            className={`cd-tab ${
+                                activeTab === "qualification" ? "active" : ""
+                            }`}
+                            onClick={() => setActiveTab("qualification")}
+                        >
+                            Qualification
+                        </button>
+                        <button
+                            className={`cd-tab ${
+                                activeTab === "outcome" ? "active" : ""
+                            }`}
+                            onClick={() => setActiveTab("outcome")}
+                        >
+                            Outcome
+                        </button>
+                    </div>
+
+                    <div className="cd-body-card">
+                        {activeTab === "overview" && (
+                            <>
+                                <div className="cd-info-grid">
+                                    <div className="cd-info-card">
+                                        <div className="cd-info-head">
+                                            Communication & Confirmation
+                                        </div>
+                                        <div className="cd-info-body">
+                                            <div className="cd-detail-grid">
+                                                <CDField
+                                                    label="Preferred Channel"
+                                                    value="WhatsApp"
+                                                />
+                                                <CDField
+                                                    label="Confirmation Call Count"
+                                                    value="1"
+                                                />
+                                                <CDField
+                                                    label="Last Messaging Date"
+                                                    value="2026-03-08 09:15"
+                                                />
+                                                <CDField
+                                                    label="Confirmation Call Date"
+                                                    value="2026-03-08 09:00"
+                                                />
+                                                <CDField
+                                                    label="Last Messaging Contents"
+                                                    value="Confirmed attendance, requested final agenda, acknowledged CV receipt."
+                                                />
+                                                <CDField
+                                                    label="Digital Conversation Contents"
+                                                    value="Prospect prefers WhatsApp reminders and online Teams link."
+                                                />
+                                                <CDField
+                                                    label="Messaging Engagement Score"
+                                                    value="78"
+                                                />
+                                                <CDField
+                                                    label="Conversation Engagement Score"
+                                                    value="82"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="cd-info-card">
+                                        <div className="cd-info-head">
+                                            Company & Source Context
+                                        </div>
+                                        <div className="cd-info-body">
+                                            <div className="cd-detail-grid">
+                                                <CDField
+                                                    label="Company ID"
+                                                    value="CMP-000128"
+                                                />
+                                                <CDField
+                                                    label="Company Name"
+                                                    value="EduCLaaS Learning Partners Pte Ltd"
+                                                />
+                                                <CDField
+                                                    label="Company Email"
+                                                    value="hello@educlaas.com"
+                                                />
+                                                <CDField
+                                                    label="Company Phone"
+                                                    value="+65 6123 4567"
+                                                />
+                                                <CDField
+                                                    label="Company Website"
+                                                    value="www.educlaas.com"
+                                                />
+                                                <CDField
+                                                    label="Industry Sector"
+                                                    value="Education Technology"
+                                                />
+                                                <CDField
+                                                    label="Company Classification"
+                                                    value="Mid-Market"
+                                                />
+                                                <CDField
+                                                    label="Company Relationship"
+                                                    value="Prospect"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="cd-spacer" />
+
+                                <div className="cd-info-card">
+                                    <div className="cd-info-head">
+                                        Activity Timeline
+                                    </div>
+                                    <div className="cd-info-body">
+                                        <div className="cd-timeline">
+                                            <div className="cd-timeline-item">
+                                                <div className="cd-timeline-icon">
+                                                    ✓
+                                                </div>
+                                                <div className="cd-timeline-card">
+                                                    <strong>
+                                                        Initial data
+                                                        verification completed
+                                                    </strong>
+                                                    <div className="cd-subtext">
+                                                        Validated required
+                                                        contact, BU, status, and
+                                                        company fields in CRM.
+                                                    </div>
+                                                    <div className="cd-subtext cd-time">
+                                                        2026-03-06 · by DBD
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-timeline-item">
+                                                <div className="cd-timeline-icon">
+                                                    📄
+                                                </div>
+                                                <div className="cd-timeline-card">
+                                                    <strong>
+                                                        CV uploaded and reviewed
+                                                    </strong>
+                                                    <div className="cd-subtext">
+                                                        CV status updated to
+                                                        complete. Highest
+                                                        qualification captured.
+                                                    </div>
+                                                    <div className="cd-subtext cd-time">
+                                                        2026-03-05 · by Sales
+                                                        Admin
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-timeline-item">
+                                                <div className="cd-timeline-icon">
+                                                    ☎
+                                                </div>
+                                                <div className="cd-timeline-card">
+                                                    <strong>
+                                                        Confirmation call logged
+                                                    </strong>
+                                                    <div className="cd-subtext">
+                                                        Meeting details
+                                                        verified. Prospect
+                                                        requested Teams meeting
+                                                        mode.
+                                                    </div>
+                                                    <div className="cd-subtext cd-time">
+                                                        2026-03-08 · by DBD
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-timeline-item">
+                                                <div className="cd-timeline-icon">
+                                                    ✉
+                                                </div>
+                                                <div className="cd-timeline-card">
+                                                    <strong>
+                                                        Thank-you and proposal
+                                                        summary prepared
+                                                    </strong>
+                                                    <div className="cd-subtext">
+                                                        Post-session
+                                                        communication
+                                                        placeholders ready for
+                                                        same-day send.
+                                                    </div>
+                                                    <div className="cd-subtext cd-time">
+                                                        2026-03-08 · by CRM
+                                                        Orchestration
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {activeTab === "meeting" && (
+                            <div className="cd-info-grid">
+                                <div className="cd-info-card">
+                                    <div className="cd-info-head">
+                                        Meeting Schedule
+                                    </div>
+                                    <div className="cd-info-body">
+                                        <div className="cd-detail-grid">
+                                            <CDField
+                                                label="Meeting Schedule ID"
+                                                value="MS-20260308-18"
+                                            />
+                                            <CDField
+                                                label="Meeting Type"
+                                                value="Sales Presentation"
+                                            />
+                                            <CDField
+                                                label="Meeting Status"
+                                                value="Confirmed"
+                                            />
+                                            <CDField
+                                                label="Meeting Mode"
+                                                value="Online (MS Teams)"
+                                            />
+                                            <CDField
+                                                label="Current Meeting Date"
+                                                value="2026-03-10 14:00"
+                                            />
+                                            <CDField
+                                                label="Original Meeting Date"
+                                                value="2026-03-10 14:00"
+                                            />
+                                            <CDField
+                                                label="Meeting Link"
+                                                value="teams.microsoft.com/l/meetup-join/abc123"
+                                            />
+                                            <CDField
+                                                label="Meeting Location"
+                                                value="Online"
+                                            />
+                                            <CDField
+                                                label="Attendees Internal"
+                                                value="DBD, EBM, Director"
+                                            />
+                                            <CDField
+                                                label="Attendees External"
+                                                value="Rong Wei Toh"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="cd-info-card">
+                                    <div className="cd-info-head">
+                                        Reminder & Reschedule Control
+                                    </div>
+                                    <div className="cd-info-body">
+                                        <div className="cd-check-grid">
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        48-hour reminder
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-pending">
+                                                        Pending
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Call prospect 48 hours
+                                                    before CaLA session.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        2-hour reminder
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-pending">
+                                                        Pending
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Short reminder before
+                                                    session start.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Confirmation call status
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-ok">
+                                                        Confirmed
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Meeting details verified.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Reschedule count
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-ok">
+                                                        0
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    No changes requested.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === "qualification" && (
+                            <div className="cd-info-grid">
+                                <div className="cd-info-card">
+                                    <div className="cd-info-head">
+                                        Qualification Snapshot
+                                    </div>
+                                    <div className="cd-info-body">
+                                        <div className="cd-detail-grid">
+                                            <CDField
+                                                label="Highest Qualification"
+                                                value="Bachelor’s Degree"
+                                            />
+                                            <CDField
+                                                label="Academic Aptitude"
+                                                value="Strong"
+                                            />
+                                            <CDField
+                                                label="Current Job Role"
+                                                value="Operations Manager"
+                                            />
+                                            <CDField
+                                                label="Inquiry Type"
+                                                value="Career progression"
+                                            />
+                                            <CDField
+                                                label="Lead Status"
+                                                value="Ready for proposal"
+                                            />
+                                            <CDField
+                                                label="Qualification Score"
+                                                value="84"
+                                            />
+                                            <CDField
+                                                label="Stage Velocity"
+                                                value="Fast"
+                                            />
+                                            <CDField
+                                                label="Conversion Readiness"
+                                                value="High"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="cd-info-card">
+                                    <div className="cd-info-head">
+                                        Qualification Checks
+                                    </div>
+                                    <div className="cd-info-body">
+                                        <div className="cd-check-grid">
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Required contact fields
+                                                        captured
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-ok">
+                                                        Complete
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Name, email, BU, company,
+                                                    role, region, lifecycle
+                                                    status.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        CV uploaded
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-ok">
+                                                        Complete
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    CV available in document
+                                                    tracking and profile.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Communication preference
+                                                        confirmed
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-ok">
+                                                        Complete
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    WhatsApp selected as
+                                                    preferred channel.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Meeting fit validated
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-pending">
+                                                        In Progress
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Awaiting session completion
+                                                    and full outcome capture.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === "outcome" && (
+                            <div className="cd-info-grid">
+                                <div className="cd-info-card">
+                                    <div className="cd-info-head">
+                                        Outcome & Stage Progression
+                                    </div>
+                                    <div className="cd-info-body">
+                                        <div className="cd-check-grid">
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Current lifecycle state
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-ok">
+                                                        Leads
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Lead qualified after meeting
+                                                    preparation.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Post-session branch
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-purple">
+                                                        Bronze-ready
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Progress to Opportunity
+                                                    Bronze if interest is
+                                                    confirmed.
+                                                </div>
+                                            </div>
+
+                                            <div className="cd-check-item">
+                                                <div className="cd-check-top">
+                                                    <div className="cd-check-title">
+                                                        Close-lost path
+                                                    </div>
+                                                    <span className="cd-pill cd-pill-pending">
+                                                        Not triggered
+                                                    </span>
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Use only if prospect rejects
+                                                    next step.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="cd-info-card">
+                                    <div className="cd-info-head">
+                                        Opportunity Conversion Readiness
+                                    </div>
+                                    <div className="cd-info-body">
+                                        <div className="cd-detail-grid">
+                                            <CDField
+                                                label="Deal ID"
+                                                value="D-10024"
+                                            />
+                                            <CDField
+                                                label="Deal Name"
+                                                value="Retail Upskilling Bronze Opportunity"
+                                            />
+                                            <CDField
+                                                label="Deal Stage"
+                                                value="Bronze"
+                                            />
+                                            <CDField
+                                                label="Bronze Entry Date"
+                                                value="Pending confirmation"
+                                            />
+                                            <CDField
+                                                label="Deal Amount"
+                                                value="$72,000"
+                                            />
+                                            <CDField
+                                                label="Deal Exec"
+                                                value="Alicia Tan"
+                                            />
+                                            <CDField
+                                                label="Deal Manager"
+                                                value="Marcus Lee"
+                                            />
+                                            <CDField
+                                                label="Business Unit"
+                                                value="Retail"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </section>
+
+                <aside className="cd-panel cd-right">
+                    <div className="cd-panel-header">
+                        <div className="cd-panel-title">SOP Status Console</div>
+                    </div>
+
+                    <div className="cd-search-row">
+                        <input
+                            className="cd-input"
+                            placeholder="Search status cards..."
+                        />
+                        <div className="cd-filter-row">
+                            <button className="cd-filter active">All</button>
+                            <button className="cd-filter">Meeting</button>
+                            <button className="cd-filter">Tasks</button>
+                            <button className="cd-filter">Docs</button>
+                            <button className="cd-filter">Opportunity</button>
+                        </div>
+                    </div>
+
+                    <div className="cd-card-list">
+                        <div className="cd-status-card">
+                            <div className="cd-status-top">
+                                <div>
+                                    <div className="cd-status-title">
+                                        Meeting Confirmation
+                                    </div>
+                                    <div className="cd-subtext">
+                                        SalesDB_Meeting-Schedule
+                                    </div>
+                                </div>
+                                <span className="cd-pill cd-pill-ok">
+                                    Confirmed
+                                </span>
+                            </div>
+
+                            <div className="cd-mini-grid">
+                                <CDField
+                                    label="Mode"
+                                    value="Online (MS Teams)"
+                                />
+                                <CDField
+                                    label="Date"
+                                    value="2026-03-10 14:00"
+                                />
+                                <CDField
+                                    label="Confirmation Call"
+                                    value="Completed"
+                                />
+                                <CDField label="Reminder 48H" value="Pending" />
+                            </div>
+                        </div>
+
+                        <div className="cd-status-card">
+                            <div className="cd-status-top">
+                                <div>
+                                    <div className="cd-status-title">
+                                        Document Tracking
+                                    </div>
+                                    <div className="cd-subtext">
+                                        SalesDB_Document-Tracking
+                                    </div>
+                                </div>
+                                <span className="cd-pill cd-pill-ok">
+                                    CV Complete
+                                </span>
+                            </div>
+
+                            <div className="cd-mini-grid">
+                                <CDField label="CV Status" value="Complete" />
+                                <CDField
+                                    label="Proposal Summary"
+                                    value="Pending Send"
+                                />
+                                <CDField
+                                    label="Support Docs"
+                                    value="Requested"
+                                />
+                                <CDField
+                                    label="Last Upload"
+                                    value="2026-03-05"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="cd-status-card">
+                            <div className="cd-status-top">
+                                <div>
+                                    <div className="cd-status-title">
+                                        Follow-Up Tasks
+                                    </div>
+                                    <div className="cd-subtext">
+                                        SalesDB_Follow-Up-Tasks
+                                    </div>
+                                </div>
+                                <span className="cd-pill cd-pill-pending">
+                                    3 Open
+                                </span>
+                            </div>
+
+                            <div className="cd-mini-grid">
+                                <CDField
+                                    label="Task Type"
+                                    value="Email Follow-up"
+                                />
+                                <CDField label="Priority" value="High" />
+                                <CDField
+                                    label="Due Date"
+                                    value="2026-03-10 16:00"
+                                />
+                                <CDField label="Assigned To" value="DBD" />
+                            </div>
+                        </div>
+
+                        <div className="cd-status-card">
+                            <div className="cd-status-top">
+                                <div>
+                                    <div className="cd-status-title">
+                                        Opportunity Conversion
+                                    </div>
+                                    <div className="cd-subtext">
+                                        SalesDB_Deal-Profile / AnalyticsDB_deal
+                                    </div>
+                                </div>
+                                <span className="cd-pill cd-pill-purple">
+                                    Bronze-Ready
+                                </span>
+                            </div>
+                            <div className="cd-amount">$72,000</div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            {workspaceOpen && (
+                <div
+                    className="cd-modal-backdrop"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setWorkspaceOpen(false);
+                        }
+                    }}
+                >
+                    <div className="cd-modal">
+                        <div className="cd-modal-head">
+                            <div>
+                                <div className="cd-modal-title">
+                                    Contact Workspace
+                                </div>
+                                <div className="cd-subtext">
+                                    Working popup for notes, tasks, calls,
+                                    emails, documents, and meetings.
+                                </div>
+                            </div>
+                            <button
+                                className="cd-modal-close"
+                                onClick={() => setWorkspaceOpen(false)}
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="cd-modal-meta">
+                            <CDField label="Contact" value="Rong Wei Toh" />
+                            <CDField
+                                label="Email"
+                                value="rong_wei1985@yahoo.com.sg"
+                            />
+                            <CDField label="Phone" value="+65 9123 4567" />
+                            <CDField label="CILOS Status" value="Leads" />
+                        </div>
+
+                        <div className="cd-modal-tabs">
+                            <button
+                                className={`cd-modal-tab ${
+                                    workspaceTab === "notes" ? "active" : ""
+                                }`}
+                                onClick={() => setWorkspaceTab("notes")}
+                            >
+                                Notes
+                            </button>
+                            <button
+                                className={`cd-modal-tab ${
+                                    workspaceTab === "tasks" ? "active" : ""
+                                }`}
+                                onClick={() => setWorkspaceTab("tasks")}
+                            >
+                                Tasks
+                            </button>
+                            <button
+                                className={`cd-modal-tab ${
+                                    workspaceTab === "calls" ? "active" : ""
+                                }`}
+                                onClick={() => setWorkspaceTab("calls")}
+                            >
+                                Calls
+                            </button>
+                            <button
+                                className={`cd-modal-tab ${
+                                    workspaceTab === "emails" ? "active" : ""
+                                }`}
+                                onClick={() => setWorkspaceTab("emails")}
+                            >
+                                Emails
+                            </button>
+                            <button
+                                className={`cd-modal-tab ${
+                                    workspaceTab === "meetings" ? "active" : ""
+                                }`}
+                                onClick={() => setWorkspaceTab("meetings")}
+                            >
+                                Meetings
+                            </button>
+                            <button
+                                className={`cd-modal-tab ${
+                                    workspaceTab === "documents" ? "active" : ""
+                                }`}
+                                onClick={() => setWorkspaceTab("documents")}
+                            >
+                                Documents
+                            </button>
+                        </div>
+
+                        <div className="cd-modal-body">
+                            {workspaceTab === "notes" && (
+                                <div className="cd-modal-panel">
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Add Note
+                                        </div>
+                                        <div className="cd-stack">
+                                            <input
+                                                className="cd-input"
+                                                placeholder="Meeting summary / objection / qualification note"
+                                            />
+                                            <textarea
+                                                className="cd-textarea"
+                                                placeholder="Write internal note here..."
+                                            />
+                                            <button className="cd-btn cd-btn-primary">
+                                                Add Note
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Saved Notes
+                                        </div>
+                                        <div className="cd-entry-list">
+                                            <div className="cd-entry">
+                                                <div className="cd-entry-title">
+                                                    Meeting qualification note
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Interested in Retail
+                                                    proposal. Asked about
+                                                    implementation timeline,
+                                                    pricing structure, and
+                                                    onboarding support.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {workspaceTab === "tasks" && (
+                                <div className="cd-modal-panel">
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Create Task
+                                        </div>
+                                        <div className="cd-stack">
+                                            <input
+                                                className="cd-input"
+                                                placeholder="Follow up on proposal"
+                                            />
+                                            <select className="cd-input">
+                                                <option>To Do</option>
+                                                <option>In Progress</option>
+                                                <option>Done</option>
+                                            </select>
+                                            <input
+                                                className="cd-input"
+                                                type="date"
+                                            />
+                                            <textarea
+                                                className="cd-textarea"
+                                                placeholder="Task details"
+                                            />
+                                            <button className="cd-btn cd-btn-primary">
+                                                Add Task
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Task Board
+                                        </div>
+                                        <div className="cd-entry-list">
+                                            <div className="cd-entry">
+                                                <div className="cd-entry-title">
+                                                    Send proposal summary
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Prepare post-meeting summary
+                                                    and recommended next steps.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {workspaceTab === "calls" && (
+                                <div className="cd-modal-panel">
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Log Call
+                                        </div>
+                                        <div className="cd-stack">
+                                            <input
+                                                className="cd-input"
+                                                placeholder="Confirmation call"
+                                            />
+                                            <select className="cd-input">
+                                                <option>Connected</option>
+                                                <option>No Answer</option>
+                                                <option>Voicemail</option>
+                                                <option>
+                                                    Follow-Up Required
+                                                </option>
+                                            </select>
+                                            <textarea
+                                                className="cd-textarea"
+                                                placeholder="Call summary"
+                                            />
+                                            <button className="cd-btn cd-btn-primary">
+                                                Save Call Log
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Call History
+                                        </div>
+                                        <div className="cd-entry-list">
+                                            <div className="cd-entry">
+                                                <div className="cd-entry-title">
+                                                    Confirmation call
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Confirmed attendance and
+                                                    preferred MS Teams meeting
+                                                    format.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {workspaceTab === "emails" && (
+                                <div className="cd-modal-panel">
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Log Email
+                                        </div>
+                                        <div className="cd-stack">
+                                            <input
+                                                className="cd-input"
+                                                placeholder="Proposal follow-up"
+                                            />
+                                            <select className="cd-input">
+                                                <option>Follow-Up</option>
+                                                <option>Reminder</option>
+                                                <option>Proposal</option>
+                                                <option>
+                                                    Document Request
+                                                </option>
+                                            </select>
+                                            <textarea
+                                                className="cd-textarea"
+                                                placeholder="What was sent?"
+                                            />
+                                            <button className="cd-btn cd-btn-primary">
+                                                Save Email Log
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Email History
+                                        </div>
+                                        <div className="cd-entry-list">
+                                            <div className="cd-entry">
+                                                <div className="cd-entry-title">
+                                                    Meeting reminder
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Sent reminder with agenda
+                                                    and Teams link.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {workspaceTab === "meetings" && (
+                                <div className="cd-modal-panel">
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Schedule Meeting
+                                        </div>
+                                        <div className="cd-stack">
+                                            <input
+                                                className="cd-input"
+                                                placeholder="Sales presentation"
+                                            />
+                                            <input
+                                                className="cd-input"
+                                                type="datetime-local"
+                                            />
+                                            <select className="cd-input">
+                                                <option>Scheduled</option>
+                                                <option>Confirmed</option>
+                                                <option>Rescheduled</option>
+                                                <option>Completed</option>
+                                                <option>No-Show</option>
+                                            </select>
+                                            <textarea
+                                                className="cd-textarea"
+                                                placeholder="Mode, agenda, and details"
+                                            />
+                                            <button className="cd-btn cd-btn-primary">
+                                                Add Meeting
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="cd-modal-card">
+                                        <div className="cd-modal-card-head">
+                                            Meeting History
+                                        </div>
+                                        <div className="cd-entry-list">
+                                            <div className="cd-entry">
+                                                <div className="cd-entry-title">
+                                                    Sales presentation
+                                                </div>
+                                                <div className="cd-subtext">
+                                                    Mode: MS Teams. Agenda:
+                                                    retail prospect
+                                                    qualification and next-step
+                                                    fit.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {workspaceTab === "documents" && (
+                                <div className="cd-modal-panel">
+                                    <div className="cd-modal-card cd-modal-card-full">
+                                        <div className="cd-modal-card-head">
+                                            Document Request / Tracking
+                                        </div>
+                                        <div className="cd-stack">
+                                            <input
+                                                className="cd-input"
+                                                placeholder="Document title"
+                                            />
+                                            <select className="cd-input">
+                                                <option>CV</option>
+                                                <option>
+                                                    Proposal Summary
+                                                </option>
+                                                <option>Case Study</option>
+                                                <option>Supporting Docs</option>
+                                            </select>
+                                            <textarea
+                                                className="cd-textarea"
+                                                placeholder="Document request notes"
+                                            />
+                                            <button className="cd-btn cd-btn-primary">
+                                                Save Document Request
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

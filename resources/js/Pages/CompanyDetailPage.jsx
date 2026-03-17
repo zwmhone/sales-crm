@@ -50,7 +50,7 @@ function Section({ title, onEdit, children }) {
                     <button
                         type="button"
                         onClick={onEdit}
-                        className="rounded-md bg-green-700 px-4 py-1.5 text-xs font-semibold text-white hover:bg-green-800"
+                        className="rounded-md bg-[#667F35] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#667F35]"
                     >
                         Edit
                     </button>
@@ -650,7 +650,7 @@ export default function CompanyDetailPage() {
                                         `/companies?bu=${encodeURIComponent(bu)}`,
                                     )
                                 }
-                                className="w-full sm:w-auto rounded-md bg-green-700 px-4 py-2 text-xs font-semibold text-white hover:bg-green-800"
+                                className="w-full sm:w-auto rounded-md bg-[#667F35] px-4 py-2 text-xs font-semibold text-white hover:bg-[#667F35"
                             >
                                 Go Back
                             </button>
@@ -658,7 +658,7 @@ export default function CompanyDetailPage() {
                             <button
                                 type="button"
                                 onClick={openAction}
-                                className="w-full sm:w-auto rounded-md bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                                className="w-full sm:w-auto rounded-md bg-[#B3A125] px-4 py-2 text-xs font-semibold text-white hover:bg-[#B3A125]"
                             >
                                 {meta.label}
                             </button>
@@ -738,7 +738,7 @@ export default function CompanyDetailPage() {
                                                         `/contacts/${r.contact_id}`,
                                                     )
                                                 }
-                                                className="rounded-md bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-800"
+                                                className="rounded-md bg-[#667F35] px-3 py-2 text-xs font-semibold text-white hover:bg-[#667F35]"
                                             >
                                                 Open
                                             </button>
@@ -746,7 +746,7 @@ export default function CompanyDetailPage() {
                                                 onClick={() =>
                                                     openSopLog("contact", r)
                                                 }
-                                                className="rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                                                className="rounded-md bg-[#B3A125] px-3 py-2 text-xs font-semibold text-white hover:bg-[#B3A125]"
                                             >
                                                 SOP
                                             </button>
@@ -825,7 +825,7 @@ export default function CompanyDetailPage() {
                                                                     `/contacts/${r.contact_id}`,
                                                                 )
                                                             }
-                                                            className="rounded-md bg-green-700 px-4 py-2 text-xs font-semibold text-white hover:bg-green-800"
+                                                            className="rounded-md bg-[#667F35] px-4 py-2 text-xs font-semibold text-white hover:bg-[#667F35]"
                                                         >
                                                             Open
                                                         </button>
@@ -836,7 +836,7 @@ export default function CompanyDetailPage() {
                                                                     r,
                                                                 )
                                                             }
-                                                            className="rounded-md bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                                                            className="rounded-md bg-[#B3A125] px-4 py-2 text-xs font-semibold text-white hover:bg-[#B3A125]"
                                                         >
                                                             SOP Log
                                                         </button>
@@ -884,7 +884,7 @@ export default function CompanyDetailPage() {
                                                         `/opportunities/${encodeURIComponent(d.opportunity_id)}`,
                                                     )
                                                 }
-                                                className="rounded-md bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-800"
+                                                className="rounded-md bg-[#667F35] px-3 py-2 text-xs font-semibold text-white hover:bg-[#667F35]"
                                             >
                                                 Open
                                             </button>
@@ -892,7 +892,7 @@ export default function CompanyDetailPage() {
                                                 onClick={() =>
                                                     openSopLog("deal", d)
                                                 }
-                                                className="rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                                                className="rounded-md bg-[#B3A125] px-3 py-2 text-xs font-semibold text-white hover:bg-[#B3A125]"
                                             >
                                                 SOP
                                             </button>
@@ -982,7 +982,7 @@ export default function CompanyDetailPage() {
                                                                     `/opportunities/${encodeURIComponent(d.opportunity_id)}`,
                                                                 )
                                                             }
-                                                            className="rounded-md bg-green-700 px-4 py-2 text-xs font-semibold text-white hover:bg-green-800"
+                                                            className="rounded-md bg-[#667F35] px-4 py-2 text-xs font-semibold text-white hover:bg-[#667F35]"
                                                         >
                                                             Open
                                                         </button>
@@ -993,7 +993,7 @@ export default function CompanyDetailPage() {
                                                                     d,
                                                                 )
                                                             }
-                                                            className="rounded-md bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                                                            className="rounded-md bg-[#B3A125] px-4 py-2 text-xs font-semibold text-white hover:bg-[#B3A125]"
                                                         >
                                                             SOP Log
                                                         </button>

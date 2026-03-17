@@ -1,527 +1,485 @@
-import React, { useMemo, useRef, useState } from "react";
-
-function getCsrfToken() {
-    const el = document.querySelector('meta[name="csrf-token"]');
-    return el?.getAttribute("content") || "";
-}
-
-function formatBytes(bytes) {
-    if (!Number.isFinite(bytes)) return "";
-    const units = ["B", "KB", "MB", "GB"];
-    let v = bytes;
-    let idx = 0;
-    while (v >= 1024 && idx < units.length - 1) {
-        v /= 1024;
-        idx++;
-    }
-    return `${v.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
-}
-
-function Card({ children }) {
-    return (
-        <div
-            style={{
-                maxWidth: 900,
-                margin: "24px auto",
-                padding: 20,
-                borderRadius: 16,
-                border: "1px solid #e5e7eb",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
-                background: "white",
-            }}
-        >
-            {children}
-        </div>
-    );
-}
-
-function Button({ children, ...props }) {
-    return (
-        <button
-            {...props}
-            style={{
-                appearance: "none",
-                border: "1px solid #111827",
-                background: props.disabled ? "#9ca3af" : "#111827",
-                color: "white",
-                padding: "10px 14px",
-                borderRadius: 12,
-                fontWeight: 600,
-                cursor: props.disabled ? "not-allowed" : "pointer",
-                ...props.style,
-            }}
-        >
-            {children}
-        </button>
-    );
-}
-
-function GhostButton({ children, ...props }) {
-    return (
-        <button
-            {...props}
-            style={{
-                appearance: "none",
-                border: "1px solid #e5e7eb",
-                background: "white",
-                color: "#111827",
-                padding: "10px 14px",
-                borderRadius: 12,
-                fontWeight: 600,
-                cursor: props.disabled ? "not-allowed" : "pointer",
-                ...props.style,
-            }}
-        >
-            {children}
-        </button>
-    );
-}
-
-function Progress({ value }) {
-    return (
-        <div style={{ marginTop: 10 }}>
-            <div
-                style={{
-                    height: 10,
-                    borderRadius: 999,
-                    background: "#e5e7eb",
-                    overflow: "hidden",
-                }}
-            >
-                <div
-                    style={{
-                        height: "100%",
-                        width: `${Math.max(0, Math.min(100, value))}%`,
-                        background: "#111827",
-                        transition: "width 150ms linear",
-                    }}
-                />
-            </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
-                Upload: {value.toFixed(0)}%
-            </div>
-        </div>
-    );
-}
-
-function Alert({ type = "info", title, children }) {
-    const styles = useMemo(() => {
-        if (type === "success")
-            return { bg: "#e6ffed", border: "#b7f5c5", text: "#065f46" };
-        if (type === "error")
-            return { bg: "#ffecec", border: "#ffb9b9", text: "#7f1d1d" };
-        return { bg: "#eef2ff", border: "#c7d2fe", text: "#1e3a8a" };
-    }, [type]);
-
-    return (
-        <div
-            style={{
-                padding: 12,
-                borderRadius: 12,
-                background: styles.bg,
-                border: `1px solid ${styles.border}`,
-                color: styles.text,
-                marginTop: 14,
-                lineHeight: 1.45,
-            }}
-        >
-            {title && (
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
-            )}
-            <div>{children}</div>
-        </div>
-    );
-}
-
-function StatGrid({ stats }) {
-    const items = [
-        ["Rows total", stats.rows_total],
-        ["Skipped (no key)", stats.rows_skipped_no_key],
-        ["Companies created", stats.companies_created],
-        ["Companies updated", stats.companies_updated],
-        ["Contacts created", stats.contacts_created],
-        ["Contacts updated", stats.contacts_updated],
-    ];
-
-    return (
-        <div
-            style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 12,
-                marginTop: 12,
-            }}
-        >
-            {items.map(([label, value]) => (
-                <div
-                    key={label}
-                    style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 14,
-                        padding: 12,
-                        background: "white",
-                    }}
-                >
-                    <div
-                        style={{
-                            fontSize: 12,
-                            color: "#6b7280",
-                            fontWeight: 700,
-                        }}
-                    >
-                        {label}
-                    </div>
-                    <div
-                        style={{
-                            marginTop: 4,
-                            fontSize: 20,
-                            fontWeight: 800,
-                            color: "#111827",
-                        }}
-                    >
-                        {value ?? 0}
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-}
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 export default function CsvImportPage() {
-    const inputRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     const [file, setFile] = useState(null);
-    const [dragOver, setDragOver] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [uploadPct, setUploadPct] = useState(0);
+    const [result, setResult] = useState(null);
+    const [error, setError] = useState(null);
 
-    const [busy, setBusy] = useState(false);
-    const [progress, setProgress] = useState(0);
+    // Columns
+    const [columnsLoading, setColumnsLoading] = useState(true);
+    const [requiredCols, setRequiredCols] = useState([]);
+    const [colsError, setColsError] = useState(null);
 
-    const [successMsg, setSuccessMsg] = useState("");
-    const [errorMsg, setErrorMsg] = useState("");
-    const [stats, setStats] = useState(null);
-    const [meta, setMeta] = useState(null);
+    // UI polish
+    const [query, setQuery] = useState("");
+    const [showColumns, setShowColumns] = useState(true);
+    const [copied, setCopied] = useState(false);
 
-    function resetMessages() {
-        setSuccessMsg("");
-        setErrorMsg("");
-        setStats(null);
-        setMeta(null);
+    useEffect(() => {
+        (async () => {
+            try {
+                setColumnsLoading(true);
+                setColsError(null);
+
+                const res = await fetch("/api/csv-import/columns");
+                const data = await res.json();
+
+                if (!data.success)
+                    throw new Error(data.error || "Failed to load columns");
+                setRequiredCols(data.required_header_columns || []);
+            } catch (e) {
+                setColsError(e.message);
+            } finally {
+                setColumnsLoading(false);
+            }
+        })();
+    }, []);
+
+    const filteredCols = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return requiredCols;
+        return requiredCols.filter((c) => c.toLowerCase().includes(q));
+    }, [requiredCols, query]);
+
+    function handleFileChange(e) {
+        setFile(e.target.files[0] || null);
     }
 
-    function validateAndSetFile(f) {
-        if (!f) {
-            setFile(null);
-            return;
-        }
-
-        const name = (f.name || "").toLowerCase();
-        const isCsv = name.endsWith(".csv") || f.type === "text/csv";
-        if (!isCsv) {
-            setFile(null);
-            setErrorMsg("Please choose a .csv file.");
-            return;
-        }
-
-        if (f.size > 20 * 1024 * 1024) {
-            setFile(null);
-            setErrorMsg("File too large. Max size is 20MB.");
-            return;
-        }
-
-        setFile(f);
+    function downloadSample() {
+        window.location.href = "/api/csv-import/sample";
     }
 
-    function onPickFile(e) {
-        resetMessages();
-        const f = e.target.files?.[0] || null;
-        validateAndSetFile(f);
-    }
-
-    function onDrop(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOver(false);
-        resetMessages();
-        const f = e.dataTransfer.files?.[0] || null;
-        validateAndSetFile(f);
-    }
-
-    function clearFile() {
-        setFile(null);
-        resetMessages();
-        setProgress(0);
-        if (inputRef.current) inputRef.current.value = "";
-    }
-
-    async function upload() {
-        resetMessages();
-
-        if (!file) {
-            setErrorMsg("Please select a CSV file first.");
-            return;
-        }
-
-        setBusy(true);
-        setProgress(0);
-
+    async function copyColumns() {
         try {
-            const form = new FormData();
-            form.append("file", file);
-
-            const json = await new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open("POST", "/api/csv-import", true);
-
-                const csrf = getCsrfToken();
-                if (csrf) xhr.setRequestHeader("X-CSRF-TOKEN", csrf);
-
-                xhr.setRequestHeader("Accept", "application/json");
-
-                xhr.upload.onprogress = (evt) => {
-                    if (!evt.lengthComputable) return;
-                    const pct = (evt.loaded / evt.total) * 100;
-                    setProgress(pct);
-                };
-
-                xhr.onload = () => {
-                    try {
-                        const data = JSON.parse(xhr.responseText || "{}");
-                        if (xhr.status >= 200 && xhr.status < 300) {
-                            resolve(data);
-                        } else {
-                            reject({ status: xhr.status, data });
-                        }
-                    } catch (e) {
-                        reject({
-                            status: xhr.status,
-                            data: {
-                                message: "Invalid JSON response from server.",
-                            },
-                        });
-                    }
-                };
-
-                xhr.onerror = () =>
-                    reject({
-                        status: 0,
-                        data: { message: "Network error during upload." },
-                    });
-
-                xhr.send(form);
-            });
-
-            if (json?.ok) {
-                setSuccessMsg(json.message || "Import completed.");
-                setStats(json.stats || null);
-                setMeta(json.meta || null);
-                setProgress(100);
-            } else {
-                setErrorMsg(json?.message || "Import failed.");
-            }
-        } catch (err) {
-            const msg =
-                err?.data?.message ||
-                (err?.status === 422
-                    ? "Validation failed. Check the CSV columns and try again."
-                    : "Upload failed.");
-            setErrorMsg(msg);
-
-            const errors = err?.data?.errors;
-            if (errors && typeof errors === "object") {
-                const firstKey = Object.keys(errors)[0];
-                if (firstKey && errors[firstKey]?.[0]) {
-                    setErrorMsg(errors[firstKey][0]);
-                }
-            }
-        } finally {
-            setBusy(false);
+            await navigator.clipboard.writeText(requiredCols.join(","));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
+        } catch {
+            // fallback: still avoid alert UI; show toast-like state
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
         }
+    }
+
+    async function handleUpload() {
+        if (!file) return;
+
+        setUploading(true);
+        setUploadPct(0);
+        setResult(null);
+        setError(null);
+
+        const form = new FormData();
+        form.append("file", file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/csv-import", true);
+
+        xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+                setUploadPct((evt.loaded / evt.total) * 100);
+            }
+        };
+
+        xhr.onload = () => {
+            try {
+                const data = JSON.parse(xhr.responseText || "{}");
+                if (data.success) setResult(data);
+                else setError(data.error || "Upload failed");
+            } catch {
+                setError("Invalid server response");
+            }
+
+            setUploading(false);
+            setFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        };
+
+        xhr.onerror = () => {
+            setError("Network error");
+            setUploading(false);
+        };
+
+        xhr.send(form);
     }
 
     return (
-        <div style={{ minHeight: "100vh", background: "#f9fafb", padding: 16 }}>
-            <Card>
-                <div
-                    style={{
-                        display: "flex",
-                        alignItems: "baseline",
-                        justifyContent: "space-between",
-                        gap: 16,
-                    }}
-                >
-                    <div>
-                        <h1
-                            style={{
-                                margin: 0,
-                                fontSize: 22,
-                                color: "#111827",
-                            }}
-                        >
-                            CSV Import
-                        </h1>
-                        <p style={{ margin: "8px 0 0", color: "#6b7280" }}>
-                            Upload a CSV to upsert contacts and auto-create
-                            missing companies.
-                        </p>
-                    </div>
+        <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
+            <div className="max-w-6xl mx-auto px-4 py-10 space-y-8">
+                {/* Header */}
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">
+                        CSV Import
+                    </h1>
+                    <p className="text-slate-600">
+                        Upload a CSV file and we’ll sync it to staging. Use the
+                        exact database column names.
+                    </p>
                 </div>
 
-                <div
-                    onDragEnter={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDragOver(true);
-                    }}
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDragOver(true);
-                    }}
-                    onDragLeave={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDragOver(false);
-                    }}
-                    onDrop={onDrop}
-                    style={{
-                        marginTop: 18,
-                        borderRadius: 16,
-                        border: `2px dashed ${dragOver ? "#111827" : "#d1d5db"}`,
-                        background: dragOver ? "#f3f4f6" : "white",
-                        padding: 18,
-                        transition: "all 120ms ease",
-                    }}
-                >
-                    <div
-                        style={{
-                            display: "flex",
-                            gap: 16,
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            flexWrap: "wrap",
-                        }}
-                    >
-                        <div>
-                            <div style={{ fontWeight: 800, color: "#111827" }}>
-                                Drag & drop your CSV here
+                {/* Requirements + columns */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    {/* Left: Requirements */}
+                    <div className="lg:col-span-2">
+                        <div className="rounded-2xl border border-slate-200 bg-white/70 backdrop-blur shadow-sm">
+                            <div className="p-5">
+                                <div className="flex items-start gap-3">
+                                    <div className="mt-0.5 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                                        {/* info icon */}
+                                        <svg
+                                            width="18"
+                                            height="18"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            className="text-slate-700"
+                                        >
+                                            <path
+                                                d="M12 22C17.523 22 22 17.523 22 12C22 6.477 17.523 2 12 2C6.477 2 2 6.477 2 12C2 17.523 6.477 22 12 22Z"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                            />
+                                            <path
+                                                d="M12 10V16"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                            />
+                                            <path
+                                                d="M12 7H12.01"
+                                                stroke="currentColor"
+                                                strokeWidth="3"
+                                                strokeLinecap="round"
+                                            />
+                                        </svg>
+                                    </div>
+
+                                    <div className="flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <h2 className="text-lg font-semibold text-slate-900">
+                                                CSV Format Requirements
+                                            </h2>
+                                            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                                                Header-only sample available
+                                            </span>
+                                        </div>
+
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            Your CSV header must match the
+                                            database column names.
+                                        </p>
+
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            {[
+                                                "Exact spelling & underscores",
+                                                "Do not rename columns",
+                                                "Missing columns won't import",
+                                                "Extra columns ignored",
+                                            ].map((t) => (
+                                                <span
+                                                    key={t}
+                                                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700"
+                                                >
+                                                    {t}
+                                                </span>
+                                            ))}
+                                        </div>
+
+                                        <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                                            <button
+                                                onClick={downloadSample}
+                                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 active:bg-slate-900"
+                                            >
+                                                {/* download icon */}
+                                                <svg
+                                                    width="18"
+                                                    height="18"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                >
+                                                    <path
+                                                        d="M12 3V14"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
+                                                        strokeLinecap="round"
+                                                    />
+                                                    <path
+                                                        d="M7 10L12 15L17 10"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                    />
+                                                    <path
+                                                        d="M5 21H19"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
+                                                        strokeLinecap="round"
+                                                    />
+                                                </svg>
+                                                Download sample header CSV
+                                            </button>
+
+                                            <button
+                                                onClick={copyColumns}
+                                                disabled={
+                                                    requiredCols.length === 0
+                                                }
+                                                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                                            >
+                                                {/* copy icon */}
+                                                <svg
+                                                    width="18"
+                                                    height="18"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                >
+                                                    <path
+                                                        d="M8 7H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
+                                                        strokeLinecap="round"
+                                                    />
+                                                    <path
+                                                        d="M9 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
+                                                    />
+                                                </svg>
+                                                Copy column names
+                                            </button>
+                                        </div>
+
+                                        {/* toast */}
+                                        <div
+                                            className={`mt-3 text-sm transition-opacity ${
+                                                copied
+                                                    ? "opacity-100"
+                                                    : "opacity-0"
+                                            }`}
+                                        >
+                                            <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-800">
+                                                <svg
+                                                    width="16"
+                                                    height="16"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                >
+                                                    <path
+                                                        d="M20 6L9 17L4 12"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                    />
+                                                </svg>
+                                                Copied to clipboard
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div
-                                style={{
-                                    marginTop: 6,
-                                    fontSize: 13,
-                                    color: "#6b7280",
-                                }}
-                            >
-                                CSV only. Max 20MB. Company names with commas
-                                must be quoted.
+
+                            <div className="border-t border-slate-200 px-5 py-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-semibold text-slate-900">
+                                            Columns
+                                        </span>
+                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                                            {requiredCols.length}
+                                        </span>
+                                    </div>
+
+                                    <button
+                                        onClick={() =>
+                                            setShowColumns((v) => !v)
+                                        }
+                                        className="text-sm font-semibold text-slate-700 hover:text-slate-900"
+                                    >
+                                        {showColumns ? "Hide" : "Show"}
+                                    </button>
+                                </div>
+
+                                {showColumns && (
+                                    <div className="mt-3">
+                                        <div className="relative">
+                                            <input
+                                                value={query}
+                                                onChange={(e) =>
+                                                    setQuery(e.target.value)
+                                                }
+                                                placeholder="Search columns…"
+                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-400"
+                                            />
+                                            <div className="absolute right-3 top-2.5 text-xs text-slate-500">
+                                                {filteredCols.length}/
+                                                {requiredCols.length}
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3">
+                                            {columnsLoading && (
+                                                <div className="text-sm text-slate-500">
+                                                    Loading columns…
+                                                </div>
+                                            )}
+
+                                            {colsError && (
+                                                <div className="text-sm text-red-600">
+                                                    Error: {colsError}
+                                                </div>
+                                            )}
+
+                                            {!columnsLoading && !colsError && (
+                                                <div className="max-h-72 overflow-auto rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-3">
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {filteredCols.map(
+                                                            (c) => (
+                                                                <span
+                                                                    key={c}
+                                                                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-mono text-slate-700 shadow-sm"
+                                                                >
+                                                                    {c}
+                                                                </span>
+                                                            ),
+                                                        )}
+                                                        {filteredCols.length ===
+                                                            0 && (
+                                                            <div className="text-sm text-slate-500">
+                                                                No columns match
+                                                                “{query}”.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
-
-                        <input
-                            ref={inputRef}
-                            type="file"
-                            accept=".csv,text/csv"
-                            onChange={onPickFile}
-                            disabled={busy}
-                        />
                     </div>
 
-                    {file && (
-                        <div
-                            style={{
-                                marginTop: 14,
-                                padding: 12,
-                                borderRadius: 12,
-                                border: "1px solid #e5e7eb",
-                                background: "#fff",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 12,
-                                alignItems: "center",
-                                flexWrap: "wrap",
-                            }}
-                        >
-                            <div>
-                                <div
-                                    style={{
-                                        fontWeight: 800,
-                                        color: "#111827",
-                                    }}
-                                >
-                                    {file.name}
+                    {/* Right: Upload */}
+                    <div className="lg:col-span-3">
+                        <div className="rounded-2xl border border-slate-200 bg-white/70 backdrop-blur shadow-sm">
+                            <div className="p-5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h2 className="text-lg font-semibold text-slate-900">
+                                        Upload CSV
+                                    </h2>
+                                    {result?.success && (
+                                        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                                            Completed
+                                        </span>
+                                    )}
                                 </div>
-                                <div
-                                    style={{
-                                        marginTop: 4,
-                                        fontSize: 13,
-                                        color: "#6b7280",
-                                    }}
-                                >
-                                    {formatBytes(file.size)}
+
+                                <p className="mt-2 text-sm text-slate-600">
+                                    Select a CSV file and upload. We’ll process
+                                    and sync to staging.
+                                </p>
+
+                                <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3 items-stretch">
+                                    <label className="md:col-span-2 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:bg-slate-50 cursor-pointer">
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-semibold text-slate-900 truncate">
+                                                {file
+                                                    ? file.name
+                                                    : "Choose a CSV file"}
+                                            </div>
+                                            <div className="text-xs text-slate-500 truncate">
+                                                {file
+                                                    ? `${Math.max(1, Math.round(file.size / 1024))} KB`
+                                                    : "CSV, up to 500MB (server limit)"}
+                                            </div>
+                                        </div>
+                                        <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                                            Browse
+                                        </span>
+                                        <input
+                                            type="file"
+                                            accept=".csv"
+                                            ref={fileInputRef}
+                                            onChange={handleFileChange}
+                                            className="hidden"
+                                        />
+                                    </label>
+
+                                    <button
+                                        onClick={handleUpload}
+                                        disabled={!file || uploading}
+                                        className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-slate-900"
+                                    >
+                                        {uploading ? "Uploading…" : "Upload"}
+                                    </button>
                                 </div>
+
+                                {uploading && (
+                                    <div className="mt-5">
+                                        <div className="flex items-center justify-between text-xs text-slate-600">
+                                            <span>Uploading</span>
+                                            <span>
+                                                {Math.round(uploadPct)}%
+                                            </span>
+                                        </div>
+                                        <div className="mt-2 h-2 rounded-full bg-slate-200 overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full bg-slate-900 transition-all"
+                                                style={{
+                                                    width: `${uploadPct}%`,
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {result && (
+                                    <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                                        <div className="text-sm font-semibold text-emerald-900">
+                                            Import completed
+                                        </div>
+                                        <div className="mt-1 text-sm text-emerald-900">
+                                            Rows inserted:{" "}
+                                            <span className="font-semibold">
+                                                {
+                                                    result.rows_inserted_this_upload
+                                                }
+                                            </span>
+                                        </div>
+                                        <div className="mt-2 text-xs text-emerald-800">
+                                            File: {result.file_name} • Batch:{" "}
+                                            {result.batch_id}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {error && (
+                                    <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                                        <div className="text-sm font-semibold text-red-900">
+                                            Upload failed
+                                        </div>
+                                        <div className="mt-1 text-sm text-red-800">
+                                            {error}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
-                            <div style={{ display: "flex", gap: 10 }}>
-                                <GhostButton
-                                    onClick={clearFile}
-                                    disabled={busy}
-                                >
-                                    Clear
-                                </GhostButton>
-                                <Button onClick={upload} disabled={busy}>
-                                    {busy ? "Uploading..." : "Upload & Import"}
-                                </Button>
+                            {/* footer */}
+                            <div className="border-t border-slate-200 px-5 py-4 text-xs text-slate-500">
+                                Tip: download the sample header CSV and paste
+                                your data under the headers.
                             </div>
                         </div>
-                    )}
-
-                    {busy && <Progress value={progress} />}
-
-                    {successMsg && (
-                        <Alert type="success" title="Import complete">
-                            {successMsg}
-                            {stats && <StatGrid stats={stats} />}
-                            {meta && (
-                                <div
-                                    style={{
-                                        marginTop: 10,
-                                        fontSize: 12,
-                                        color: "#065f46",
-                                    }}
-                                >
-                                    <div>
-                                        <b>Company name column:</b>{" "}
-                                        {meta.company_name_column_used ||
-                                            "none"}
-                                    </div>
-                                    <div>
-                                        <b>Contact match key:</b>{" "}
-                                        {meta.contact_match_key}
-                                    </div>
-                                </div>
-                            )}
-                        </Alert>
-                    )}
-
-                    {errorMsg && (
-                        <Alert type="error" title="Error">
-                            {errorMsg}
-                        </Alert>
-                    )}
-
-                    <Alert type="info" title="CSV header tips">
-                        <div style={{ fontSize: 13 }}>
-                            Best: use headers that match DB columns exactly
-                            (snake_case). For company name, include{" "}
-                            <code>company_name</code> or{" "}
-                            <code>current_company</code>. If company name
-                            contains a comma, wrap it in quotes:
-                            <br />
-                            <code>"ACME, Inc."</code>
-                        </div>
-                    </Alert>
+                    </div>
                 </div>
-            </Card>
+            </div>
         </div>
     );
 }
